@@ -1,0 +1,117 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+
+
+
+
+struct Particle {
+    float2 position;
+    float2 velocity;
+    int type; // Will be color too
+    float rad;
+};
+
+
+
+float Force(int type1, int type2) {
+
+    float system[4][4] = 
+// R    G    B    Y
+{
+    {0.032,0.027,-0.002,-0.016},  //R
+    {-0.006,-0.01,-0.026,-0.041},  //G
+    {0.035,0.014,-0.024,-0.044},  //B
+    {0.026,-0.041,0.021,0.029}   //Y
+    };
+
+    return system[type1][type2];
+
+}
+
+//int resolution;
+
+RWStructuredBuffer<Particle> particles;
+int numParticles;
+float bound;
+
+// TODO: Define a Grid based method here
+//struct Grid {
+//    int par_id[numParticles];
+//}
+
+[numthreads(64, 1, 1)] // 1D array 
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    
+    if (id.x >= numParticles) return;
+    
+    
+    float influence = 10.0*particles[id.x].rad;
+    
+    for(uint i = 0 ; i < numParticles; i+=1)
+    {
+        if(i != id.x) {
+            float dist = sqrt((particles[i].position.x - particles[id.x].position.x)*(particles[i].position.x - particles[id.x].position.x) + (particles[i].position.y - particles[id.x].position.y)*(particles[i].position.y - particles[id.x].position.y));
+            if(dist > 0.0) {
+                float2 unitVect; 
+                unitVect.x = (particles[i].position.x - particles[id.x].position.x)/dist;
+                unitVect.y = (particles[i].position.y - particles[id.x].position.y)/dist;
+                
+                if(dist < (particles[id.x].rad + particles[i].rad)) { // Too close
+                    particles[id.x].velocity.x = -0.1*unitVect.x;
+                    particles[id.x].velocity.y = -0.1*unitVect.y;
+                }
+                else if(dist < influence) 
+                {
+                    float f = Force(particles[id.x].type, particles[i].type);
+                    particles[id.x].velocity.x += f*unitVect.x;
+                    particles[id.x].velocity.y += f*unitVect.y;
+                    
+                }   
+            }
+            else { // Strong push back
+                particles[id.x].velocity.x *= -1.0;
+                particles[id.x].velocity.y *= -1.0;
+            }
+        }
+
+    }
+
+    // Dampning 
+    particles[id.x].velocity.x *= 0.1;
+    particles[id.x].velocity.y *= 0.1;
+
+    // Update position
+    particles[id.x].position.x += particles[id.x].velocity.x;
+    particles[id.x].position.y += particles[id.x].velocity.y;
+    //particles[id.x].position.y = bound*sin(particles[id.x].position.x);
+
+    // Bounds check 
+    if(particles[id.x].position.x > bound) {
+        particles[id.x].position.x = bound;
+        particles[id.x].velocity.x *= -1.0;
+    }
+
+    if(particles[id.x].position.x < -1.0*bound) {
+        particles[id.x].position.x = -1.0*bound;
+        particles[id.x].velocity.x *= -1.0;
+    }
+
+    if(particles[id.x].position.y > bound) {
+        particles[id.x].position.y = bound;
+        particles[id.x].velocity.y *= -1.0;
+    }
+
+    if(particles[id.x].position.y < -1.0*bound) {
+        particles[id.x].position.y = -1.0*bound;
+        particles[id.x].velocity.y *= -1.0;
+    }
+
+            
+            
+    
+    //Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}
